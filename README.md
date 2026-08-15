@@ -6,7 +6,7 @@
 - **动态检索**：直播记忆 / 声音样本 / 措辞 / 核心记忆 / 偏好 —— 本地 embedding 语义检索
 - **行为指令**：判别词兜底命中（被夸 / 被质疑 / 失约被催 等）
 
-## 目录结构
+## 目录结构（仿原 Hzm-AI-Bot）
 
 ```
 astrbot_plugin_hzm_hello/
@@ -46,12 +46,12 @@ astrbot_plugin_hzm_hello/
   - Docker 部署 AstrBot：通常为 `http://172.x.0.1:8000/v1/embeddings`（宿主机网关）
   - 裸机部署：`http://127.0.0.1:8000/v1/embeddings`
 
-搭建参考：
+搭建参考（脚本已随包提供 `scripts/embed_server.py`）：
 
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install fastembed fastapi uvicorn
-# 启动一个 bge-small-zh-v1.5 的 /v1/embeddings 服务（监听 8000）
+python scripts/embed_server.py   # 监听 0.0.0.0:8000，模型自动下载到 scripts/models/
 ```
 
 ## 重新生成向量

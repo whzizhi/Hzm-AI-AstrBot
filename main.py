@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from astrbot.api.star import Star, Context, register
 from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.message_components import ComponentType
 from astrbot.api import logger
 
 from chatbot.core import assemble_system_prompt
@@ -53,7 +54,7 @@ class HzmHelloPlugin(Star):
         logger.info("[hzm_hello] terminate 完成")
 
     # ==================== 内部：调用当前 LLM Provider ====================
-    async def _chat_with_provider(self, user_text: str, session_id: str) -> str:
+    async def _chat_with_provider(self, user_text: str, session_id: str, image_urls: list = None) -> str:
         """调用 AstrBot 当前启用的 LLM Provider，生成灰泽满风格回复。
 
         失败场景：
@@ -64,24 +65,41 @@ class HzmHelloPlugin(Star):
         if provider is None:
             return "（还没连上大脑呢，请先在 AstrBot 面板配置一个 LLM Provider）"
 
+        # 纯图片消息（无文字）→ 给占位提示，避免 LLM 收到空 prompt
+        prompt = user_text or "[用户发了一张图片]"
+
         system_prompt = await asyncio.to_thread(
             assemble_system_prompt,
-            user_text,
+            prompt,
             self.config.get("enable_rag", True),
             self.config.get("embed_url") or DEFAULT_EMBED_URL,
         )
         try:
             resp = await provider.text_chat(
-                prompt=user_text,
+                prompt=prompt,
                 session_id=session_id,
                 system_prompt=system_prompt,
                 contexts=[],  # 骨架阶段不带历史；接入完整 memory 后再传短期记忆
+                image_urls=image_urls or None,
             )
             reply = (getattr(resp, "completion_text", None) or "").strip()
             return reply or "……（沉默了一下）"
         except Exception as e:
             logger.exception(f"[hzm_hello] provider.text_chat 失败: {e}")
             return f"哎呀，hzm 脑子卡了一下……（{e}）"
+
+    def _extract_image_urls(self, event) -> list:
+        """从消息链中提取图片 URL（优先 url，回退 path）。"""
+        urls = []
+        try:
+            for comp in event.get_messages() or []:
+                if getattr(comp, "type", None) == ComponentType.Image:
+                    url = getattr(comp, "url", None) or getattr(comp, "path", None)
+                    if url:
+                        urls.append(url)
+        except Exception:
+            pass
+        return urls
 
     # ==================== 被动监听：无前缀直聊 ====================
     @filter.event_message_type(filter.EventMessageType.ALL)
@@ -95,7 +113,10 @@ class HzmHelloPlugin(Star):
         """
         try:
             text = (event.message_str or "").strip()
-            if not text:
+            image_urls = self._extract_image_urls(event)
+
+            # 无文本也无图片 → 不接管（纯 @、表情等）
+            if not text and not image_urls:
                 return
             # 让 /hzm、/hzm_status、以及其他插件指令走各自的指令处理器
             if text.startswith("/"):
@@ -103,7 +124,7 @@ class HzmHelloPlugin(Star):
 
             # 调试回声（默认关）
             if self.config.get("enable_echo", False):
-                yield event.plain_result(f"[echo] {text}")
+                yield event.plain_result(f"[echo] {text or '(图片)'}")
                 return
 
             # 主开关：关闭则不接管，让框架默认 LLM 生效
@@ -112,9 +133,9 @@ class HzmHelloPlugin(Star):
 
             sender = event.get_sender_id()
             session_id = event.unified_msg_origin
-            logger.info(f"[hzm_hello] chat | sender={sender} text={text!r}")
+            logger.info(f"[hzm_hello] chat | sender={sender} text={text!r} imgs={len(image_urls)}")
 
-            reply = await self._chat_with_provider(text, session_id)
+            reply = await self._chat_with_provider(text, session_id, image_urls)
             yield event.plain_result(reply)
 
             # 阻断框架默认 LLM 与后续被动 handler，避免双回复

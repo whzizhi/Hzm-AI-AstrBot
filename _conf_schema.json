@@ -23,5 +23,10 @@
     "type": "bool",
     "description": "调试用：被动消息 echo（会与 enable_chat 冲突，一般保持关闭）",
     "default": false
+  },
+  "split_reply_enabled": {
+    "type": "bool",
+    "description": "开启后，长回复按句分开发送，句间按字数模拟真人打字节奏延迟（分段分句发送）",
+    "default": true
   }
 }

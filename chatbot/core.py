@@ -30,4 +30,7 @@ def assemble_system_prompt(user_text: str, enable_rag: bool = True, embed_url: s
                 if block:
                     parts.append(block)
 
+    # 极简长度提醒：一句一停，不展开（对齐原版 build_message_list 末条，只约束日常闲聊）
+    parts.append("【回复节奏】日常闲聊：一句话说完就停，不再补第二句。30字内。")
+
     return "\n\n".join(parts)

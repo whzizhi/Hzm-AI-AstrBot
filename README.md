@@ -6,6 +6,9 @@
 - **动态检索**：直播记忆 / 声音样本 / 措辞 / 核心记忆 / 偏好 —— 本地 embedding 语义检索
 - **行为指令**：判别词兜底命中（被夸 / 被质疑 / 失约被催 等）
 
+## 注意事项
+不建议将此项目部署在 AstrBot 上，并通过腾讯官方开放平台将机器人接入 QQ。若仅用于个人使用，则配置较为便捷；但若计划在官方平台上向其他用户开放服务，则需具备企业账户，且使用 Webhook 方式时还需完成国内域名备案。请了解之后自行斟酌。
+
 ## 目录结构
 
 ```
@@ -16,9 +19,10 @@ astrbot_plugin_hzm_hello/
 ├── requirements.txt          插件运行时依赖（无额外依赖）
 ├── chatbot/                  核心代码包（仿 src/plugins/chatbot/）
 │   ├── __init__.py
-│   ├── config.py             常量 / 路径 / 检索阈值
+│   ├── config.py             常量 / 路径 / 检索阈值 / 分段分句参数
 │   ├── persona.py            静态人格 + 名词库 + 行为指令
 │   ├── retrieval.py          embedding + 余弦相似度 + 五路检索
+│   ├── reply_style.py        回复分段分句（split_reply）+ 打字节奏延迟（split_delay）
 │   └── core.py               总装 assemble_system_prompt
 ├── persona/                  人格与知识库数据（原始数据 + 预计算向量）
 │   ├── core/                 system_prompt / traits / styles
@@ -71,6 +75,7 @@ EMBED_URL=http://127.0.0.1:8000/v1/embeddings python scripts/precompute_vectors.
 | `embed_url` | string | "" | embedding 服务地址（空 = 内置默认） |
 | `greeting` | string | `灰泽满：` | `/hzm` 回复前缀 |
 | `enable_echo` | bool | false | 调试回声 |
+| `split_reply_enabled` | bool | true | 长回复分段分句 + 打字节奏发送（真人打字感；句间按字数延迟，参数见 `chatbot/config.py` 的 `SPLIT_*`） |
 
 ## 指令
 

@@ -22,6 +22,7 @@ from astrbot.api.message_components import ComponentType
 from astrbot.api import logger
 
 from chatbot.core import assemble_system_prompt
+from chatbot.reply_style import split_reply, split_delay, clean_reply
 
 
 DEFAULT_EMBED_URL = "http://172.18.0.1:8000/v1/embeddings"
@@ -136,7 +137,17 @@ class HzmHelloPlugin(Star):
             logger.info(f"[hzm_hello] chat | sender={sender} text={text!r} imgs={len(image_urls)}")
 
             reply = await self._chat_with_provider(text, session_id, image_urls)
-            yield event.plain_result(reply)
+
+            # 输出清洗：自指兜底（她/他→灰泽满）+ 括号/省略号纪律（移植自原版 clean_reply）
+            reply = clean_reply(reply)
+            # 分段分句 + 真人打字节奏（移植自参考项目 Hzm-AI-Bot 的 reply_style.py）
+            # 开关 split_reply_enabled 见 _conf_schema.json；参数见 chatbot/config.py
+            parts = split_reply(reply) if self.config.get("split_reply_enabled", True) else [reply]
+            parts = [clean_reply(p) for p in parts]
+            for p in parts[:-1]:
+                yield event.plain_result(p)
+                await asyncio.sleep(split_delay(p))
+            yield event.plain_result(parts[-1])
 
             # 阻断框架默认 LLM 与后续被动 handler，避免双回复
             event.stop_event()

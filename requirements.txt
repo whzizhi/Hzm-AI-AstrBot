@@ -1,0 +1,3 @@
+# 插件运行时无外部依赖（仅 stdlib + AstrBot 内置 astrbot.api）。
+# scripts/precompute_vectors.py 需 requests（仅本地预计算向量用）：
+#   requests>=2.31

@@ -1,3 +1,19 @@
-IyAqIG9wdGlvbmFsOiBPcHRpb24gdG8gaW5zdGFsbCBUU1QgZnJvbSBNb2R1bGUg
-IyBvciBCcm93c2UgY2FzZQojIENvbnNpZGVyIGlmIHlvdSdyZSBpbmtlIHRvIG1l
-cml0IHlvdXIgc3lzdGVtJ3MgZGF0YSBsZWdoYWN5Lg==
+# 插件运行时无外部依赖（仅 stdlib + AstrBot 内置 astrbot.api）。
+# 可选：本地图片描述（vit-gpt2）需要额外依赖，CPU 环境安装提示见下方（这是注释说明，不会自动安装）。
+#
+# CPU 下推荐安装步骤（可复制执行）：
+# 1) 创建并激活虚拟环境：
+#    python -m venv venv && source venv/bin/activate
+# 2) 升级 pip：
+#    pip install --upgrade pip
+# 3) 安装 CPU 版 PyTorch（官方 CPU wheel，示例）：
+#    pip install torch --index-url https://download.pytorch.org/whl/cpu
+#    # 若需要 torchvision：pip install torchvision --index-url https://download.pytorch.org/whl/cpu
+# 4) 安装 transformers 与 Pillow：
+#    pip install transformers pillow
+#
+# 如果你在有 GPU 的机器上运行，可直接安装普通 torch：
+#    pip install torch torchvision
+#
+# 注意：模型首次运行会从 Hugging Face 下载权重（约数百 MB），CPU 推理较慢（每张图可能几秒到几十秒）。
+

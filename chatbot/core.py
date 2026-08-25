@@ -34,6 +34,7 @@ from .routing import (
 from .reply_style import (
     split_reply, split_delay, clean_reply, is_echo_reply, _trim_text,
 )
+from .context_probe import get_now_context
 
 # ==================== 基础人设 ====================
 if SYSTEM_PROMPT_FILE.exists():
@@ -148,13 +149,21 @@ def build_message_list(user_msg: str, global_persona: str, fused_items: list,
                        core_stories: list = None,
                        session_context: str = "",
                        query_hint: str = "",
-                       denied_terms: set = None) -> list:
+                       denied_terms: set = None,
+                       now_context: str = "") -> list:
     """按优先级组装发送给模型的消息列表。"""
     messages = []
     base_system = SYSTEM_PROMPT
     if global_persona:
         base_system += "\n\n" + global_persona
     messages.append({"role": "system", "content": base_system})
+
+    # 当前时间/农历/天气感知
+    if now_context:
+        messages.append({
+            "role": "system",
+            "content": f"{now_context}\n（这是你现在的时间和所在地，聊到时间/日子/天气时按这个来，不要编造）",
+        })
 
     # 偏好档案
     if preference_items:
@@ -351,6 +360,38 @@ async def assemble_system_prompt(user_msg: str, enable_rag: bool = True,
     return "\n\n".join(parts)
 
 
+async def summarize_batch(msgs: list, provider=None) -> str:
+    """把一批消息归纳成一两句话（说了什么 + 语气 + 意图），供模型理解整批。
+
+    只有攒批 ≥2 条才归纳（单条零额外延迟）；只归纳原文已有信息，不编造；
+    失败返回空串（调用方忽略，原文照旧）。
+    """
+    if len(msgs) < 2:
+        return ""
+    if provider is None:
+        return ""
+    texts = []
+    for t, v in msgs:
+        if t and str(t).strip():
+            texts.append(str(t).strip())
+        if v:
+            texts.append(f"[图片：{v}]")
+    prompt = (
+        "以下是用户刚刚连发的几条消息，请用一两句话概括：他们在说什么、什么语气、大致想表达什么。\n"
+        "要求：只归纳原文已有的信息，不要编造；不要逐条复述；如果是纯寒暄就直接说。\n\n"
+        f"消息：\n" + "\n".join(texts)
+    )
+    try:
+        resp = await provider.text_chat(
+            prompt=prompt,
+            system_prompt="你是消息归纳器，只做客观归纳。",
+        )
+        return (getattr(resp, "completion_text", None) or "").strip()
+    except Exception as e:
+        print(f"⚠️ 批量归纳失败（忽略）: {e}")
+        return ""
+
+
 async def handle_chat(user_id: str, user_msg: str, provider,
                       embed_url: str = "", enable_rag: bool = True) -> str:
     """处理一条用户消息，返回机器人回复（完整版：含记忆、会话、行为路由）。"""
@@ -449,6 +490,7 @@ async def handle_chat(user_id: str, user_msg: str, provider,
         preference_items=preference_items, core_stories=core_stories,
         session_context=session_context, query_hint=query_hint,
         denied_terms=denied_terms,
+        now_context=get_now_context(),
     )
 
     # --- 调用大模型 ---

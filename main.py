@@ -29,6 +29,7 @@ from chatbot.core import assemble_system_prompt, handle_chat
 from chatbot.reply_style import split_reply, split_delay, clean_reply
 from chatbot.memory import get_user_history
 from chatbot import vision
+from chatbot.chat_window import ChatBatcher, make_send_fn
 
 
 DEFAULT_EMBED_URL = "http://172.18.0.1:8000/v1/embeddings"
@@ -47,6 +48,8 @@ class HzmHelloPlugin(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
         self.config = config or {}
+        # 读秒攒批器：连发消息先攒批再统一回复（handle_chat + 视觉描述回调）
+        self.batcher = None
         logger.info("[hzm_hello] __init__ 完成")
 
     # ==================== 生命周期 ====================
@@ -58,9 +61,28 @@ class HzmHelloPlugin(Star):
             f"enable_rag={self.config.get('enable_rag', True)} "
             f"greeting={self.config.get('greeting', '灰泽满：')!r}"
         )
+        self.batcher = ChatBatcher(
+            handle_chat_fn=self._handle_batch_chat,
+            vision_cb=self._describe_one_image,
+            config=self.config,
+        )
 
     async def terminate(self):
         logger.info("[hzm_hello] terminate 完成")
+
+    # ==================== 攒批回调 ====================
+    async def _describe_one_image(self, url: str) -> str:
+        """攒批里的图片 → 视觉描述（单张）。"""
+        vision_api_key = self.config.get("vision_api_key", "")
+        try:
+            return await vision.describe_image(vision_api_key, url) or ""
+        except Exception as e:
+            logger.warning(f"[hzm_hello] 图片描述失败: {e}")
+            return ""
+
+    async def _handle_batch_chat(self, session_id: str, user_text: str) -> str:
+        """攒批 flush 后的完整聊天入口。"""
+        return await self._chat_with_provider(user_text, session_id)
 
     # ==================== 会话记忆（AstrBot 内置） ====================
     async def _get_conversation(self, umo: str):
@@ -157,7 +179,7 @@ class HzmHelloPlugin(Star):
     # ==================== 被动监听：无前缀直聊 ====================
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_any_message(self, event: AstrMessageEvent):
-        """所有非指令普通文本 → 灰泽满接管。"""
+        """所有非指令普通文本 → 进入读秒攒批窗口，静默后统一回复。"""
         try:
             text = (event.message_str or "").strip()
             image_urls = self._extract_image_urls(event)
@@ -180,19 +202,16 @@ class HzmHelloPlugin(Star):
 
             sender = event.get_sender_id()
             session_id = event.unified_msg_origin
-            logger.info(f"[hzm_hello] chat | sender={sender} text={text!r} imgs={len(image_urls)}")
+            logger.info(f"[hzm_hello] enqueue | sender={sender} text={text!r} imgs={len(image_urls)}")
 
-            reply = await self._chat_with_provider(text, session_id, image_urls)
-
-            # 输出清洗
-            reply = clean_reply(reply)
-            # 分段分句 + 真人打字节奏
-            parts = split_reply(reply) if self.config.get("split_reply_enabled", True) else [reply]
-            parts = [clean_reply(p) for p in parts]
-            for p in parts[:-1]:
-                yield event.plain_result(p)
-                await asyncio.sleep(split_delay(p))
-            yield event.plain_result(parts[-1])
+            # 读秒攒批：同一用户连续消息合并，静默后统一回复（后台 event.send）
+            if self.batcher is None:
+                self.batcher = ChatBatcher(
+                    handle_chat_fn=self._handle_batch_chat,
+                    vision_cb=self._describe_one_image,
+                    config=self.config,
+                )
+            self.batcher.enqueue(session_id, text, image_urls, make_send_fn(event))
 
             # 阻断框架默认 LLM
             event.stop_event()

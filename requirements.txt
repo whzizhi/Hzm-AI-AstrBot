@@ -1,1 +1,3 @@
-# 插件运行时依赖（无额外依赖，使用 AstrBot 内置模块）
+# 插件运行时依赖
+lunar-python>=1.4.0   # context_probe 农历/节气/节日感知
+httpx>=0.27.0         # context_probe 和风天气请求（AstrBot 环境一般自带）

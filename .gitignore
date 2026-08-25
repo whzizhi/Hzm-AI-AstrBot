@@ -3,3 +3,6 @@ __pycache__/
 *.pyo
 *.bak.*
 user_memory/
+
+# 本地 embedding 模型缓存（bge-small-zh-v1.5 onnx）
+scripts/models/

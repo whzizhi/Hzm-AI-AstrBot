@@ -43,5 +43,25 @@
     "type": "string",
     "description": "视觉模型名（默认腾讯 youtu-vita）",
     "default": "youtu-vita"
+  },
+  "bili_uid": {
+    "type": "string",
+    "description": "灰泽满本人 B站 UID（开播/动态监听对象）。留空则跳过 B站监听。",
+    "default": ""
+  },
+  "bili_sessdata": {
+    "type": "string",
+    "description": "B站登录 Cookie SESSDATA（动态监控必需；可留空只监控开播）。请自行在浏览器登录 B站后从 Cookie 中复制，勿在公开渠道泄露。",
+    "default": ""
+  },
+  "notify_friends_whitelist": {
+    "type": "list",
+    "description": "B站开播/动态推送白名单（QQ 号列表，如 [\"10001\",\"10002\"]）。留空则广播给灰泽满 QQ 的全部好友。",
+    "default": []
+  },
+  "push_interval": {
+    "type": "int",
+    "description": "B站轮询间隔（秒），别低于 120，避免带 SESSDATA 的会话被风控。",
+    "default": 180
   }
 }

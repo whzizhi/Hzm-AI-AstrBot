@@ -124,12 +124,14 @@ def _extract_dynamic_images(item: dict) -> list:
 
 class BiliMonitor:
     def __init__(self, uid: str, sessdata: str, whitelist: list,
-                 push_interval: int = PUSH_INTERVAL, get_platform_client=None):
+                 push_interval: int = PUSH_INTERVAL, push_callback=None,
+                 get_platform_client=None):
         self.uid = str(uid or "").strip()
         self.sessdata = (sessdata or "").strip()
         self.whitelist = [str(x).strip() for x in (whitelist or []) if str(x).strip()]
         self.push_interval = int(push_interval or PUSH_INTERVAL)
-        self.get_platform_client = get_platform_client  # 回调：返回 OneBot 客户端或 None
+        self.push_callback = push_callback          # 回调：async (content, image_path) -> None
+        self.get_platform_client = get_platform_client  # 兼容旧接口（保留，未使用则走 push_callback）
         self.state = _load_state()
         self._warned_no_sessdata = False
         # 基线是否已建（进程内标志，不持久化——每次启动都重新对齐，
@@ -284,10 +286,21 @@ class BiliMonitor:
             return self.state.get("friends") or []
 
     async def _push(self, bot, content: str, image_path: Path | None = None) -> None:
-        """私聊广播给全部好友（白名单非空则只发白名单）。单好友失败不中断。
-
-        image_path 提供时，消息附带该图片（OneBot CQ 码）。
+        """推送播报。优先走 push_callback（AstrBot 已知会话推送，QQ官方平台）；
+        无回调且拿到 OneBot 客户端时，退回好友列表广播（NapCat/aiocqhttp）。
         """
+        # 白名单过滤：仅在回调/广播内部有目标概念时使用；这里统一交给回调判断
+        if self.push_callback is not None:
+            try:
+                await self.push_callback(content, image_path)
+                return
+            except Exception as e:
+                print(f"⚠️ B站推送回调失败（尝试广播兜底）: {e}")
+
+        if bot is None or not hasattr(bot, "get_friend_list"):
+            print("[B站] 无可用推送通道（无 push_callback 且无 OneBot 客户端），播报已记录在日志")
+            return
+
         friends = await self._get_friends(bot)
         targets = [f for f in friends
                    if not self.whitelist or str(f.get("user_id")) in self.whitelist]
@@ -321,8 +334,8 @@ async def run_bili_monitor(monitor: BiliMonitor, stop: asyncio.Event) -> None:
         try:
             if monitor.get_platform_client:
                 bot = monitor.get_platform_client()
-            if bot is None:
-                print("⚠️ 未找到可用平台客户端，B站监听等待中（需要 OneBot 类平台，如 NapCat/aiocqhttp）")
+            if bot is None and monitor.push_callback is None:
+                print("⚠️ 无可用推送通道（push_callback 或 OneBot 客户端），等待中……")
                 try:
                     await asyncio.wait_for(stop.wait(), timeout=30)
                 except asyncio.TimeoutError:

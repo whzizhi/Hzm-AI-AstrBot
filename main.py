@@ -24,6 +24,7 @@ from astrbot.api.star import Star, Context, register
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.message_components import ComponentType
 from astrbot.api import logger
+from astrbot.core.message.message_event_result import MessageChain
 
 from chatbot.core import assemble_system_prompt, handle_chat
 from chatbot.reply_style import split_reply, split_delay, clean_reply
@@ -54,6 +55,8 @@ class HzmHelloPlugin(Star):
         # B站监听后台任务
         self._bili_task = None
         self._bili_stop = None
+        # 已知互动会话（B站推送目标）：set of (platform_id, message_type, session_id)
+        self._known_sessions = set()
         logger.info("[hzm_hello] __init__ 完成")
 
     # ==================== 生命周期 ====================
@@ -80,7 +83,7 @@ class HzmHelloPlugin(Star):
                 sessdata=self.config.get("bili_sessdata", ""),
                 whitelist=self.config.get("notify_friends_whitelist", []),
                 push_interval=int(self.config.get("push_interval", 0) or 0),
-                get_platform_client=self._get_platform_client,
+                push_callback=self._bili_push,
             )
             self._bili_task = asyncio.create_task(run_bili_monitor(monitor, self._bili_stop))
             logger.info(f"[hzm_hello] B站监听已启动 uid={bili_uid}")
@@ -109,6 +112,53 @@ class HzmHelloPlugin(Star):
         except Exception as e:
             logger.warning(f"[hzm_hello] 获取平台客户端失败: {e}")
         return None
+
+    def _remember_session(self, event: AstrMessageEvent) -> None:
+        """记录互动过的会话（B站推送目标）。"""
+        try:
+            platform_id = getattr(event.platform_meta, "id", None) or ""
+            msg_type = event.message_obj.type.value if getattr(
+                getattr(event, "message_obj", None), "type", None) else "FriendMessage"
+            session_id = event.unified_msg_origin
+            if platform_id and session_id:
+                self._known_sessions.add((platform_id, msg_type, session_id))
+        except Exception:
+            pass
+
+    async def _bili_push(self, content: str, image_path=None) -> None:
+        """B站播报推送：向所有互动过的会话发送（QQ官方平台无法枚举好友）。"""
+        whitelist = [str(x).strip() for x in
+                     (self.config.get("notify_friends_whitelist", []) or []) if str(x).strip()]
+        sent = 0
+        for platform in self.context.platform_manager.get_insts():
+            try:
+                pid = getattr(platform.meta(), "id", None) or ""
+            except Exception:
+                continue
+            for (f_pid, msg_type, session_id) in list(self._known_sessions):
+                if f_pid != pid:
+                    continue
+                # 白名单：只匹配 session_id 中出现的 QQ 号（unified_msg_origin 形如 qq:12345）
+                if whitelist and not any(w in str(session_id) for w in whitelist):
+                    continue
+                try:
+                    from astrbot.core.platform.message_session import MessageSession
+                    from astrbot.core.platform.message_type import MessageType
+                    chain = MessageChain()
+                    chain.message(content)
+                    # QQ官方平台不支持本地文件图，图片降级为附链接文本
+                    if image_path:
+                        chain.message(f"\n[配图] file://{image_path}")
+                    session = MessageSession(
+                        platform_name=pid,
+                        message_type=MessageType(msg_type),
+                        session_id=session_id,
+                    )
+                    await platform.send_by_session(session, chain)
+                    sent += 1
+                except Exception as e:
+                    logger.warning(f"[hzm_hello] B站推送失败 {pid}:{session_id}: {e}")
+        logger.info(f"[hzm_hello] B站播报已推送 {sent} 个会话")
 
     # ==================== 攒批回调 ====================
     async def _describe_one_image(self, url: str) -> str:
@@ -243,6 +293,8 @@ class HzmHelloPlugin(Star):
             sender = event.get_sender_id()
             session_id = event.unified_msg_origin
             logger.info(f"[hzm_hello] enqueue | sender={sender} text={text!r} imgs={len(image_urls)}")
+            # 记录互动会话（B站播报推送目标）
+            self._remember_session(event)
 
             # 读秒攒批：同一用户连续消息合并，静默后统一回复（后台 event.send）
             if self.batcher is None:

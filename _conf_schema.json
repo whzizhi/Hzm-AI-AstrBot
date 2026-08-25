@@ -1,0 +1,47 @@
+{
+  "enable_chat": {
+    "type": "bool",
+    "description": "开启后，会话中所有非指令消息都会被灰泽满接管并回复（无需前缀）",
+    "default": true
+  },
+  "max_history": {
+    "type": "int",
+    "description": "会话记忆保留的最近消息条数（user+assistant 合计，约等于最近 N/2 轮对话）。设 0 表示不保留历史。",
+    "default": 20
+  },
+  "enable_rag": {
+    "type": "bool",
+    "description": "开启语义检索（本地 embedding）：按用户消息检索直播记忆/风格样本/措辞/核心记忆/偏好并注入提示词；行为走判别词兜底。关闭则只保留静态人格 + 核心名词。",
+    "default": true
+  },
+  "embed_url": {
+    "type": "string",
+    "description": "本地 embedding 服务地址（OpenAI 兼容 /v1/embeddings）。本机 Docker 部署默认 172.18.0.1:8000；其他机器请改成你自己的 embedding 服务地址。留空用内置默认值。",
+    "default": ""
+  },
+  "greeting": {
+    "type": "string",
+    "description": "/hzm 指令的回复前缀（仅指令场景用）",
+    "default": "灰泽满："
+  },
+  "enable_echo": {
+    "type": "bool",
+    "description": "调试用：被动消息 echo（会与 enable_chat 冲突，一般保持关闭）",
+    "default": false
+  },
+  "split_reply_enabled": {
+    "type": "bool",
+    "description": "开启后，长回复按句分开发送，句间按字数模拟真人打字节奏延迟（分段分句发送）",
+    "default": true
+  },
+  "vision_api_key": {
+    "type": "string",
+    "description": "图片识别用的云端视觉模型 API Key（腾讯 TokenHub youtu-vita）。留空则收到图片时不识别内容。",
+    "default": ""
+  },
+  "vision_model": {
+    "type": "string",
+    "description": "视觉模型名（默认腾讯 youtu-vita）",
+    "default": "youtu-vita"
+  }
+}

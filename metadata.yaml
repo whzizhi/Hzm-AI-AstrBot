@@ -1,0 +1,5 @@
+name: astrbot_plugin_hzm_hello
+desc: 灰泽满插件：无前缀直聊 + 六路检索 + RRF融合 + 记忆系统 + 会话追踪 + 行为路由
+version: 0.4.0
+author: MureasAm (scaffold)
+repo: https://github.com/MureasAm/Hzm-AI-Bot

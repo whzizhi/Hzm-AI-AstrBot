@@ -30,6 +30,7 @@ from chatbot.reply_style import split_reply, split_delay, clean_reply
 from chatbot.memory import get_user_history
 from chatbot import vision
 from chatbot.chat_window import ChatBatcher, make_send_fn
+from chatbot.bili_bridge import BiliMonitor, run_bili_monitor
 
 
 DEFAULT_EMBED_URL = "http://172.18.0.1:8000/v1/embeddings"
@@ -50,6 +51,9 @@ class HzmHelloPlugin(Star):
         self.config = config or {}
         # 读秒攒批器：连发消息先攒批再统一回复（handle_chat + 视觉描述回调）
         self.batcher = None
+        # B站监听后台任务
+        self._bili_task = None
+        self._bili_stop = None
         logger.info("[hzm_hello] __init__ 完成")
 
     # ==================== 生命周期 ====================
@@ -67,8 +71,44 @@ class HzmHelloPlugin(Star):
             config=self.config,
         )
 
+        # B站直播/动态监听（配置了 BILI_UID 才启动；BILI_SESSDATA 用于动态，未配则只监听开播）
+        bili_uid = (self.config.get("bili_uid") or "").strip() or ""
+        if bili_uid:
+            self._bili_stop = asyncio.Event()
+            monitor = BiliMonitor(
+                uid=bili_uid,
+                sessdata=self.config.get("bili_sessdata", ""),
+                whitelist=self.config.get("notify_friends_whitelist", []),
+                push_interval=int(self.config.get("push_interval", 0) or 0),
+                get_platform_client=self._get_platform_client,
+            )
+            self._bili_task = asyncio.create_task(run_bili_monitor(monitor, self._bili_stop))
+            logger.info(f"[hzm_hello] B站监听已启动 uid={bili_uid}")
+        else:
+            logger.info("[hzm_hello] BILI_UID 未配置，跳过 B站监听")
+
     async def terminate(self):
+        if self._bili_task:
+            try:
+                if self._bili_stop:
+                    self._bili_stop.set()
+                self._bili_task.cancel()
+                await asyncio.gather(self._bili_task, return_exceptions=True)
+            except Exception as e:
+                logger.warning(f"[hzm_hello] 停止B站监听失败: {e}")
         logger.info("[hzm_hello] terminate 完成")
+
+    def _get_platform_client(self):
+        """返回第一个支持 OneBot 好友列表/私聊的平台客户端（CQHttp bot），无则 None。"""
+        try:
+            for platform in self.context.platform_manager.get_insts():
+                client = platform.get_client()
+                if client is not None and hasattr(client, "get_friend_list") \
+                        and hasattr(client, "send_private_msg"):
+                    return client
+        except Exception as e:
+            logger.warning(f"[hzm_hello] 获取平台客户端失败: {e}")
+        return None
 
     # ==================== 攒批回调 ====================
     async def _describe_one_image(self, url: str) -> str:

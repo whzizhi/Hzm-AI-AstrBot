@@ -107,6 +107,8 @@ WEATHER_GEO_CACHE_SECONDS = 86400                  # 城市名→LocationID 解�
 PUSH_INTERVAL = 180               # B站轮询间隔（秒）。别低于 120：带 SESSDATA 的会话调太频繁会被风控
 BILI_STATE_FILE = PLUGIN_ROOT / "data" / "bili_state.json"  # 开播/动态去重状态持久化
 AUTO_ACCEPT_FRIEND = True         # 好友申请自动通过
+BILI_UID = ""                     # 灰泽满本人 B站 UID（开播/动态监听对象，面板配置覆盖）
+NOTIFY_FRIENDS_WHITELIST = []     # 推送白名单 QQ 号列表；空 = 广播给全部好友（面板配置覆盖）
 
 # ==================== 视觉（图片描述） ====================
 VISION_MODEL = "glm-4.6v"         # 视觉理解模型（原版用智谱，插件版可用腾讯 youtu-vita 或厂商兼容模型）
